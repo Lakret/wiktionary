@@ -1,0 +1,18 @@
+
+<div class="container">
+  <div class="column">
+    <div>
+      <label>Search for a word:</label>
+      <input value="<%= @word %>"
+             phx-keyup="update_word"
+             phx-debounce="200"/>
+    </div>
+
+    <p><%= @language %>, <%= @word %>, <%= @request_id %></p>
+  </div>
+
+  <div class="fixed_container">
+      <p><%= raw(@definition) %></p>
+      <p><%= @error_message %></p>
+    </div>
+</div>
