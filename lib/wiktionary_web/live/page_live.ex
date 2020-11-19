@@ -33,7 +33,6 @@ defmodule WiktionaryWeb.PageLive do
         languages_map =
           Parser.parse_article(body)
           |> Enum.map(fn {language, article} ->
-            article = Parser.to_html(article)
             {language, article}
           end)
 

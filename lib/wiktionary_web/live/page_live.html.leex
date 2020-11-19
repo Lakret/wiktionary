@@ -12,9 +12,9 @@
   </div>
 
   <div class="fixed-container">
-    <%= for {language, article} <- @languages_map do %>
+    <%= for {language, _article} <- @languages_map do %>
       <h1><%= language %></h1>
-      <%= raw(article) %>
+      <!-- %= raw(article) % -->
     <% end %>
   </div>
 </div>
