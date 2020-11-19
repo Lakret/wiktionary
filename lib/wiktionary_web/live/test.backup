@@ -1,0 +1,6 @@
+<%
+    # <div class="fixed-container">
+    #  <p><%= raw(@definition) %></p>
+    #  <p><%= @error_message %></p>
+    # </div>
+   %>

@@ -11,8 +11,10 @@
     <p><%= @language %>, <%= @word %>, <%= @request_id %></p>
   </div>
 
-  <div class="fixed_container">
-      <p><%= raw(@definition) %></p>
-      <p><%= @error_message %></p>
-    </div>
+  <div class="fixed-container">
+    <%= for {language, article} <- @languages_map do %>
+      <h1><%= language %></h1>
+      <%= raw(article) %>
+    <% end %>
+  </div>
 </div>

@@ -1,6 +1,8 @@
 defmodule WiktionaryWeb.PageLive do
   use WiktionaryWeb, :live_view
 
+  alias Wiktionary.Parser
+
   @impl true
   def mount(_params, _session, socket) do
     state = %{
@@ -8,7 +10,8 @@ defmodule WiktionaryWeb.PageLive do
       definition: "",
       error_message: "",
       request_id: 0,
-      language: "German"
+      language: "German",
+      languages_map: %{}
     }
 
     {:ok, assign(socket, state)}
@@ -27,7 +30,14 @@ defmodule WiktionaryWeb.PageLive do
   def handle_info({:definition, request_id, body}, socket) do
     socket =
       if socket.assigns.request_id == request_id do
-        assign(socket, definition: body)
+        languages_map =
+          Parser.parse_article(body)
+          |> Enum.map(fn {language, article} ->
+            article = Parser.to_html(article)
+            {language, article}
+          end)
+
+        assign(socket, definition: body, languages_map: languages_map)
       else
         socket
       end
@@ -75,59 +85,4 @@ defmodule WiktionaryWeb.PageLive do
       end
     end)
   end
-
-  @doc false
-  def test_wiktionary_article() do
-    url = "https://en.wiktionary.org/wiki/Angst"
-    response = HTTPoison.get!(url)
-    response.body
-  end
-
-  def parse_article(article) do
-    {:ok, article} = Floki.parse_document(article)
-    # Floki.find(article, "h2>span.mw-headline")
-    article_content = Floki.find(article, "div#mw-content-text")
-    [{"div", _attrs, children}] = article_content
-
-    # TODO: add tree levels tracking to `fold_children`, and do tree reconstruction / extraction
-    {language_name, staged, language_blocks} =
-      fold_children(children, {nil, [], nil}, fn elem, {language_name, staged, result} = acc ->
-        case elem do
-          {"h2", _attrs, [{"span", span_attrs, [new_language_name]} | _rest]} ->
-            if Enum.any?(span_attrs, fn attr -> attr == {"class", "mw-headline"} end) do
-              case result do
-                nil ->
-                  {new_language_name, [elem], []}
-
-                result when is_list(result) ->
-                  {new_language_name, [],
-                   result ++ [{:language_block, language_name, Enum.reverse(staged)}]}
-              end
-            else
-              {language_name, [elem | staged], result}
-            end
-
-          _ ->
-            {language_name, [elem | staged], result}
-        end
-      end)
-
-    language_blocks = language_blocks ++ [{:language_block, language_name, Enum.reverse(staged)}]
-  end
-
-  def fold_children(children, acc, f) when is_list(children) do
-    Enum.reduce(children, acc, fn elem, acc -> fold_children(elem, acc, f) end)
-  end
-
-  def fold_children({tag, attrs, children} = node, acc, f)
-      when is_binary(tag) and is_list(attrs) do
-    acc = f.(node, acc)
-    fold_children(children, acc, f)
-  end
-
-  def fold_children(text, acc, f) when is_binary(text) do
-    f.(text, acc)
-  end
-
-  def fold_children({:comment, _}, acc, f), do: acc
 end
