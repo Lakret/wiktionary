@@ -1,8 +1,8 @@
 defmodule Wiktionary.Parser do
-  @type language :: String.t()
+  alias Wiktionary.Parser.State
 
-  @type parsed :: %{current_language: String.t() | nil, results: map(), staged: map()}
-  @type reducer :: (parsed(), Floki.html_tree() -> parsed())
+  @type language :: String.t()
+  @type reducer :: (State.t(), Floki.html_tree() -> State.t())
 
   @type extract :: {kind, attribute}
   @type kind :: :language_section_start | :part_of_speech_section_start
@@ -14,45 +14,30 @@ defmodule Wiktionary.Parser do
     response.body
   end
 
-  @spec parse_article(article :: String.t()) :: parsed()
+  @spec parse_article(article :: String.t()) :: map()
   def parse_article(article) do
     {:ok, article} = Floki.parse_document(article)
     article_content = Floki.find(article, "div#mw-content-text")
     [{"div", _attrs, children}] = article_content
 
-    %{current_language: current_language, results: results, staged: staged} =
-      fold_children(children, %{current_language: nil, results: %{}, staged: %{}}, fn elem, acc ->
+    state =
+      fold_children(children, State.new(), fn elem, state ->
         case language_section_start(elem) do
           {:language_section_start, language_name} ->
-            staged_empty? = Map.keys(acc.staged) |> Enum.empty?()
-
-            results =
-              if is_nil(acc.current_language) || staged_empty? do
-                acc.results
-              else
-                Map.put(acc.results, acc.current_language, acc.staged)
-              end
-
-            %{current_language: language_name, results: results, staged: %{}}
+            State.put_current_language(state, language_name)
 
           nil ->
             case part_of_speech_section_start(elem) do
               {:part_of_speech_section_start, part_of_speech} ->
-                %{acc | staged: Map.put(acc.staged, :part_of_speech, part_of_speech)}
+                State.put_part_of_speech(state, part_of_speech)
 
               _ ->
-                acc
+                state
             end
         end
       end)
 
-    if staged != %{} do
-      Map.put(results, current_language, staged)
-      # |> IO.inspect(label: :parser_result)
-    else
-      results
-      # |> IO.inspect(label: :parser_result)
-    end
+    State.finalize(state)
   end
 
   ## Helper
@@ -105,7 +90,7 @@ defmodule Wiktionary.Parser do
   end
 
   @doc false
-  @spec fold_children(Floki.html_tree(), parsed(), reducer()) :: parsed()
+  @spec fold_children(Floki.html_tree(), State.t(), reducer()) :: State.t()
   def fold_children(html_tree, accumulator, reducer)
 
   def fold_children(children, acc, f) when is_list(children) do
