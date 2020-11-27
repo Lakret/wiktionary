@@ -4,8 +4,7 @@ defmodule Wiktionary.Parser do
   @type language :: String.t()
   @type reducer :: (State.t(), Floki.html_tree() -> State.t())
 
-  @type extract :: {kind, attribute}
-  @type kind :: :language_section_start | :part_of_speech_section_start
+  @type extract :: {:ok, attribute}
   @type attribute :: String.t()
 
   def test_wiktionary_article() do
@@ -20,27 +19,33 @@ defmodule Wiktionary.Parser do
     article_content = Floki.find(article, "div#mw-content-text")
     [{"div", _attrs, children}] = article_content
 
+    # NOTE: add your new extractors here to automatically apply them on parsing pass
+    extractors = [
+      {&language_section_start/1, &State.put_current_language/2},
+      {&part_of_speech_section_start/1, &State.put_part_of_speech/2},
+      {&word_defintions_section_start/1, &State.put_attribute(&1, :word, &2)},
+      {&word_definitions/1, &State.put_attribute(&1, :definitions, &2)}
+    ]
+
     state =
       fold_children(children, State.new(), fn elem, state ->
-        case language_section_start(elem) do
-          {:language_section_start, language_name} ->
-            State.put_current_language(state, language_name)
+        Enum.reduce_while(extractors, state, fn {extractor, state_modifier}, state ->
+          case extractor.(elem) do
+            {:ok, extracted} ->
+              state = state_modifier.(state, extracted)
+              {:halt, state}
 
-          nil ->
-            case part_of_speech_section_start(elem) do
-              {:part_of_speech_section_start, part_of_speech} ->
-                State.put_part_of_speech(state, part_of_speech)
-
-              _ ->
-                state
-            end
-        end
+            nil ->
+              {:cont, state}
+          end
+        end)
       end)
 
     State.finalize(state)
   end
 
-  ## Helper
+  ## Extractors
+  ## Note: add them in `extractors` list in `parse_article/1` to apply.
 
   @doc false
   @spec language_section_start(Floki.html_tree()) :: extract() | nil
@@ -49,7 +54,7 @@ defmodule Wiktionary.Parser do
       # TODO: use id = language to extract them
       {"h2", _attrs, [{"span", span_attrs, [possible_language_name]} | _rest]} ->
         if {"class", "mw-headline"} in span_attrs do
-          {:language_section_start, possible_language_name}
+          {:ok, possible_language_name}
         else
           nil
         end
@@ -79,7 +84,7 @@ defmodule Wiktionary.Parser do
           end)
 
         if !is_nil(part_of_speech) do
-          {:part_of_speech_section_start, part_of_speech}
+          {:ok, part_of_speech}
         else
           nil
         end
@@ -88,6 +93,60 @@ defmodule Wiktionary.Parser do
         nil
     end
   end
+
+  @word_defintion_section_start_classes ["Latinx headword", "Latn headword"]
+
+  @doc false
+  @spec word_defintions_section_start(Floki.html_tree()) :: extract() | nil
+  def word_defintions_section_start(elem) do
+    case elem do
+      {"p", _attrs, [{"strong", strong_attrs, [word]} | _rest]} ->
+        word? =
+          Enum.find(strong_attrs, fn
+            {"class", class} when class in @word_defintion_section_start_classes -> true
+            _ -> false
+          end)
+
+        if word? do
+          {:ok, word}
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc false
+  @spec word_definitions(Floki.html_tree()) :: extract() | nil
+  def word_definitions(elem) do
+    case elem do
+      {"ol", _attrs, children} when is_list(children) ->
+        case Floki.find(elem, "li") do
+          [] ->
+            nil
+
+          definitions ->
+            definitions =
+              Enum.map(definitions, fn definition ->
+                # FIXME: for now we just remove examples for simplicity,
+                # but we'll need to extract them in the future.
+                definition = Floki.find_and_update(definition, "dl", fn _ -> :delete end)
+
+                # FIXME: proper spacing around links (<a>)
+                Floki.text(definition)
+              end)
+
+            {:ok, definitions}
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  ## Helpers
 
   @doc false
   @spec fold_children(Floki.html_tree(), State.t(), reducer()) :: State.t()

@@ -38,6 +38,7 @@ defmodule Wiktionary.Parser.State do
       state.current_part_of_speech,
       state.staged
     )
+    # TODO:
     |> IO.inspect(label: :parser_result)
   end
 
@@ -67,16 +68,30 @@ defmodule Wiktionary.Parser.State do
     %__MODULE__{state | current_part_of_speech: part_of_speech, results: results, staged: %{}}
   end
 
+  @spec put_attribute(t(), any(), any()) :: t()
+  def put_attribute(state, key, value) do
+    %__MODULE__{state | staged: Map.put(state.staged, key, value)}
+  end
+
   ## Helpers
 
   @doc false
   @spec put_result_for_language_and_part_of_speech(map(), String.t(), String.t(), map()) :: map()
   def put_result_for_language_and_part_of_speech(results, language, part_of_speech, staged) do
+    # initial state contains empty part_of_speech, so we shouldn't add anything in that case
     if is_nil(part_of_speech) do
       results
     else
       results = Map.put_new(results, language, %{})
-      put_in(results, [language, part_of_speech], staged)
+
+      # sometimes we have several identical parts of speech for the same language,
+      # for different word definitions
+      if is_nil(results[language][part_of_speech]) do
+        put_in(results, [language, part_of_speech], staged)
+      else
+        # FIXME: handle more than 2 different sections for the same {language, part_of_speech}
+        put_in(results, [language, part_of_speech <> "2"], staged)
+      end
     end
   end
 end
