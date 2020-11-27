@@ -30,11 +30,7 @@ defmodule WiktionaryWeb.PageLive do
   def handle_info({:definition, request_id, body}, socket) do
     socket =
       if socket.assigns.request_id == request_id do
-        languages_map =
-          Parser.parse_article(body)
-          |> Enum.map(fn {language, article} ->
-            {language, article}
-          end)
+        languages_map = Parser.parse_article(body)
 
         assign(socket, definition: body, languages_map: languages_map)
       else
